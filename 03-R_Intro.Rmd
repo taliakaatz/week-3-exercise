@@ -1,0 +1,257 @@
+---
+title: "Fundamentals of Computing and Data Display"
+subtitle: "Data structures in R"
+author: "Christoph Kern"
+output: html_notebook
+---
+
+## Setup
+
+List installed packages.
+
+```{r}
+library()
+```
+
+Install and load additional package.
+
+```{r}
+# install.packages("RSocrata")
+library(RSocrata)
+```
+
+Show session info.
+
+```{r}
+sessionInfo()
+```
+
+## R-Basics, help & packages
+
+This section lists some useful functions when working with R. First of all, it is good practice to cite R whenever it was used in the research process. `citation()` displays the proper way to cite R, whereas `citation("packagename")` can be used when citing R packages.
+
+```{r}
+citation()
+citation("RSocrata")
+```
+
+Typically, one of the first things to do is specifying your working directory. The following functions can be used to display (`getwd()`) and set (`setwd()`) the working directory and to list its contents (`dir()`). Keep in mind that R only accepts paths with forward slashes. 
+
+```{r}
+getwd()
+# setwd("path")
+dir()
+```
+
+To get familiar with R's help system, we can explore the documentation for the function `help()`. This is equivalent to `help(help)`
+
+```{r}
+help()
+```
+
+The documentation for global R options.
+
+```{r}
+help(options)
+```
+
+As a shortcut for `help()` we can use `?`.
+
+```{r}
+?options
+```
+
+Use `help.search()` to search the help system.
+
+```{r}
+help.search("mean")
+```
+
+The help system indicates that there is a function called `mean()`, which is just another object in R.
+
+```{r}
+class(mean)
+mode(mean)
+typeof(mean)
+```
+
+## Accessing data
+
+In this notebook, we use the Chicago crime data that is provided via the Socrata API. Documentation on the dataset and on how to communicate with the API can be found here:
+
+https://dev.socrata.com/foundry/data.cityofchicago.org/6zsd-86xi
+
+```{r}
+cc_2017 <- read.socrata("https://data.cityofchicago.org/resource/6zsd-86xi.json?$where=date between '2017-01-01' and '2017-01-31'")
+```
+
+The following functions can be used to get a first impression of the data. 
+
+```{r}
+str(cc_2017)
+head(cc_2017)
+```
+
+Note that we can use `View()`, i.e. the data viewer, in connection with conditions on rows and columns to display only certain pieces of the whole data frame.
+
+```{r}
+View(cc_2017)
+View(cc_2017[-(1:500),1:2])
+```
+
+Using index notation to access only specific variables or observations is an important tool as it can be used in conjunction with many different functions. It is therefore worthwhile to consider some basic examples.
+
+```{r}
+cc_2017[,1]
+cc_2017[,c(1,2)]
+cc_2017[1:10,1:2]
+cc_2017[1:10,c(1:2,5)]
+```
+
+List all variable names of the Chicago crime data.
+
+```{r}
+names(cc_2017)
+```
+
+Now we can access variables by using their names and the $-notation. This can be combined with conditional statements regarding rows to also filter specific observations.
+
+```{r}
+cc_2017$arrest[1:10]
+cc_2017$arrest[cc_2017$id == "10801090"]
+```
+
+## Managing data
+ 
+Lets assume we are interested in the number of incidents in a certain category on the district level. Using `str()` we noticed earlier that most vectors in our data frame are of type character, which is not optimal for aggregation.
+ 
+```{r}
+cc_2017$district <- as.factor(cc_2017$district)
+cc_2017$d_arrest <- as.numeric(as.logical(cc_2017$arrest))
+```
+
+We further create dummy variables for some incident types. (Note that we repeat code three times, i.e. there might be a better way to do this.)
+
+```{r}
+cc_2017$d_burglary <- ifelse(cc_2017$primary_type == "BURGLARY", 1, 0)
+cc_2017$d_narcotics <- ifelse(cc_2017$primary_type == "NARCOTICS", 1, 0)
+cc_2017$d_weapons <- ifelse(cc_2017$primary_type == "WEAPONS VIOLATION", 1, 0)
+```
+
+Select the variables that we want to aggregate...
+
+```{r}
+cc_sub <- subset(cc_2017, select = c(district, d_arrest, d_burglary, d_narcotics, d_weapons))
+```
+
+...and collapse them by district, using `sum` as the aggregation function.
+
+```{r}
+cc_agg <- aggregate(cc_sub[, 2:5], by = list(cc_sub$district), FUN = sum)
+head(cc_agg)
+```
+
+## Exploring data
+
+Now, we can also compute basic descriptive statistics with the aggregated data using `summary()`. 
+
+```{r}
+summary(cc_agg$d_arrest)
+```
+
+Note that this function is class-sensitive, i.e. here we get a different output depending on the class of the respective object.
+
+```{r}
+summary(cc_2017$district)
+```
+
+To confirm, use `class()`.
+
+```{r}
+class(cc_agg$d_arrest)
+class(cc_2017$district)
+```
+
+One important advantage of R is that we can basically store everything as an object. We can then extract information from this object or hand it over to another function. As an example, the following code attempts to extract the mean from the `sum` object.
+ 
+```{r}
+sum <- summary(cc_agg[,2:4])
+sum
+sum[4,1]
+```
+
+However, using `mean()` directly is of course much more convenient.
+
+```{r}
+mean(cc_agg$d_arrest)
+```
+
+We can also store the `sum` object and the extracted mean into a list, just to get an idea about how this data structure looks like.
+
+```{r}
+sum_list <- list(sum, sum[4,1])
+sum_list
+```
+
+Subsetting can be used to access individual elements of the list, whereas using [ vs. [[ defines the structure of the resulting output.
+
+```{r}
+class(sum_list[2])
+class(sum_list[[2]])
+```
+
+## Programming
+
+Now our task is to compute some statistics over all numeric variables of the aggregated data set. First, we drop the group (factor) variable.
+
+```{r}
+cc_agg$Group.1 <- NULL
+```
+
+A simple loop over all remaining variables.
+
+```{r}
+output <- vector("double", length(cc_agg))
+for (i in 1:length(cc_agg)) {
+  output[i] <- mean(cc_agg[,i])
+  }
+```
+
+A function for computing the median absolute deviation of a variable.
+
+```{r}
+median_dev <- function(x) {
+  median(abs(x - median(x)))
+  }
+```
+
+A function with a function as an argument, looping over all variables of a `data.frame`. 
+
+```{r}
+col_summary <- function(df, fun) {
+  output <- vector("double", length(df))
+  for (i in 1:length(df)) {
+    output[i] <- fun(df[,i])
+    }
+  output
+  }
+```
+
+Some examples on how to use `col_summary()`.
+
+```{r}
+col_summary(cc_agg, mean)
+sqrt(col_summary(cc_agg, var))
+col_summary(cc_agg, median_dev)
+```
+
+Show the code of the new function.
+
+```{r}
+col_summary
+```
+
+## References
+
+* https://www.opendatanetwork.com/
+* https://dev.socrata.com/
