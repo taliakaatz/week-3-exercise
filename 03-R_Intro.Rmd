@@ -7,7 +7,7 @@ output: html_notebook
 
 ## Setup
 
-List installed packages.
+List installed packages. new text!!
 
 ```{r}
 library()
